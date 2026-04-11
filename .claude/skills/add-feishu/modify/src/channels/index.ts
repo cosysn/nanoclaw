@@ -2,6 +2,10 @@
 // Each import triggers the channel module's registerChannel() call.
 
 // discord
+import './discord.js';
+
+// feishu
+import './feishu.js';
 
 // gmail
 
@@ -10,6 +14,3 @@
 // telegram
 
 // whatsapp
-
-// feishu
-import './feishu.js';
