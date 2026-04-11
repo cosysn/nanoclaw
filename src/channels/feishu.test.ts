@@ -32,7 +32,9 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
     contact = {
       v3: {
         user: {
-          get: vi.fn().mockResolvedValue({ data: { user: { name: 'Test User' } } }),
+          get: vi
+            .fn()
+            .mockResolvedValue({ data: { user: { name: 'Test User' } } }),
         },
       },
     };
@@ -82,7 +84,9 @@ import { FeishuChannel, FeishuChannelOpts } from './feishu.js';
 
 // --- Helpers ---
 
-function createTestOpts(overrides?: Partial<FeishuChannelOpts>): FeishuChannelOpts {
+function createTestOpts(
+  overrides?: Partial<FeishuChannelOpts>,
+): FeishuChannelOpts {
   return {
     onMessage: vi.fn(),
     onChatMetadata: vi.fn(),
@@ -264,7 +268,9 @@ describe('FeishuChannel', () => {
       const channel = new FeishuChannel('cli_app123', 'secret_abc', opts);
       await channel.connect();
 
-      currentClient().contact.v3.user.get.mockRejectedValueOnce(new Error('forbidden'));
+      currentClient().contact.v3.user.get.mockRejectedValueOnce(
+        new Error('forbidden'),
+      );
 
       await triggerMessage(createMessageEvent({ senderId: 'ou_fallback' }));
 
@@ -371,7 +377,9 @@ describe('FeishuChannel', () => {
       const channel = new FeishuChannel('cli_app123', 'secret_abc', opts);
       await channel.connect();
 
-      currentClient().im.v1.message.create.mockRejectedValueOnce(new Error('API error'));
+      currentClient().im.v1.message.create.mockRejectedValueOnce(
+        new Error('API error'),
+      );
 
       await expect(
         channel.sendMessage('fs:oc_chat123', 'Will fail'),
@@ -391,22 +399,38 @@ describe('FeishuChannel', () => {
 
   describe('ownsJid', () => {
     it('owns fs: JIDs', () => {
-      const channel = new FeishuChannel('cli_app123', 'secret_abc', createTestOpts());
+      const channel = new FeishuChannel(
+        'cli_app123',
+        'secret_abc',
+        createTestOpts(),
+      );
       expect(channel.ownsJid('fs:oc_chat123')).toBe(true);
     });
 
     it('does not own WhatsApp JIDs', () => {
-      const channel = new FeishuChannel('cli_app123', 'secret_abc', createTestOpts());
+      const channel = new FeishuChannel(
+        'cli_app123',
+        'secret_abc',
+        createTestOpts(),
+      );
       expect(channel.ownsJid('12345@g.us')).toBe(false);
     });
 
     it('does not own Telegram JIDs', () => {
-      const channel = new FeishuChannel('cli_app123', 'secret_abc', createTestOpts());
+      const channel = new FeishuChannel(
+        'cli_app123',
+        'secret_abc',
+        createTestOpts(),
+      );
       expect(channel.ownsJid('tg:123456789')).toBe(false);
     });
 
     it('does not own Discord JIDs', () => {
-      const channel = new FeishuChannel('cli_app123', 'secret_abc', createTestOpts());
+      const channel = new FeishuChannel(
+        'cli_app123',
+        'secret_abc',
+        createTestOpts(),
+      );
       expect(channel.ownsJid('dc:1234567890')).toBe(false);
     });
   });
@@ -420,7 +444,9 @@ describe('FeishuChannel', () => {
       await channel.connect();
 
       // Should not throw
-      await expect(channel.setTyping('fs:oc_chat123', true)).resolves.toBeUndefined();
+      await expect(
+        channel.setTyping('fs:oc_chat123', true),
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -428,7 +454,11 @@ describe('FeishuChannel', () => {
 
   describe('channel properties', () => {
     it('has name "feishu"', () => {
-      const channel = new FeishuChannel('cli_app123', 'secret_abc', createTestOpts());
+      const channel = new FeishuChannel(
+        'cli_app123',
+        'secret_abc',
+        createTestOpts(),
+      );
       expect(channel.name).toBe('feishu');
     });
   });

@@ -26,6 +26,16 @@ export class FeishuChannel implements Channel {
   private appId: string;
   private appSecret: string;
 
+  // Track typing indicator reactions per chat
+  // Key: chatJid (e.g. "fs:oc_xxx"), Value: { messageId, reactionId }
+  private typingReactions = new Map<
+    string,
+    { messageId: string; reactionId: string }
+  >();
+
+  // Track the last message ID per chat for typing indicator
+  private lastMessageId = new Map<string, string>();
+
   constructor(appId: string, appSecret: string, opts: FeishuChannelOpts) {
     this.appId = appId;
     this.appSecret = appSecret;
@@ -49,7 +59,10 @@ export class FeishuChannel implements Channel {
     // Create event dispatcher
     const eventDispatcher = new lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data: any) => {
-        logger.info({ event: 'im.message.receive_v1', data }, 'Feishu message event received');
+        logger.info(
+          { event: 'im.message.receive_v1', data },
+          'Feishu message event received',
+        );
         try {
           await this.handleMessage(data);
         } catch (err) {
@@ -59,7 +72,9 @@ export class FeishuChannel implements Channel {
     });
 
     // Log all events for debugging
-    logger.info('Feishu event dispatcher registered for: im.message.receive_v1');
+    logger.info(
+      'Feishu event dispatcher registered for: im.message.receive_v1',
+    );
 
     // Start WebSocket connection with event dispatcher
     await this.wsClient.start({ eventDispatcher });
@@ -143,6 +158,9 @@ export class FeishuChannel implements Channel {
     // Store chat metadata
     this.opts.onChatMetadata(chatJid, timestamp, chatName, 'feishu', isGroup);
 
+    // Track last message ID for this chat (used by typing indicator)
+    this.lastMessageId.set(chatJid, messageId);
+
     // Only deliver full message for registered groups
     const group = this.opts.registeredGroups()[chatJid];
     if (!group) {
@@ -214,8 +232,67 @@ export class FeishuChannel implements Channel {
     logger.info('Feishu bot stopped');
   }
 
-  async setTyping(_jid: string, _isTyping: boolean): Promise<void> {
-    // Feishu doesn't support typing indicators
+  async setTyping(jid: string, isTyping: boolean): Promise<void> {
+    if (!this.client) {
+      logger.warn('Feishu client not initialized');
+      return;
+    }
+
+    const chatJid = jid;
+    const messageId = this.lastMessageId.get(chatJid);
+
+    if (!messageId) {
+      logger.debug({ chatJid }, 'No message ID available for typing indicator');
+      return;
+    }
+
+    const existingReaction = this.typingReactions.get(chatJid);
+
+    if (isTyping) {
+      // If already showing typing, don't add another reaction
+      if (existingReaction) {
+        return;
+      }
+
+      try {
+        const response = await this.client.im.messageReaction.create({
+          path: { message_id: messageId },
+          data: {
+            reaction_type: { emoji_type: 'Typing' },
+          },
+        });
+
+        const reactionId = (response as any).data?.reaction_id;
+        if (reactionId) {
+          this.typingReactions.set(chatJid, { messageId, reactionId });
+          logger.debug(
+            { chatJid, messageId, reactionId },
+            'Added typing indicator',
+          );
+        }
+      } catch (err) {
+        logger.debug({ err, messageId }, 'Failed to add typing indicator');
+      }
+    } else {
+      // Remove typing indicator
+      if (!existingReaction) {
+        return;
+      }
+
+      try {
+        await this.client.im.messageReaction.delete({
+          path: {
+            message_id: existingReaction.messageId,
+            reaction_id: existingReaction.reactionId,
+          },
+        });
+        logger.debug({ chatJid }, 'Removed typing indicator');
+      } catch (err) {
+        logger.debug({ err }, 'Failed to remove typing indicator');
+      } finally {
+        this.typingReactions.delete(chatJid);
+      }
+    }
   }
 }
 
