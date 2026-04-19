@@ -25,6 +25,7 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
+import { createFeishuReplyDispatcher } from './channels/feishu-reply-dispatcher.js';
 import {
   cleanupOrphans,
   ensureContainerRuntimeRunning,
@@ -280,25 +281,66 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   };
 
   await channel.setTyping?.(chatJid, true);
+  logger.info({ chatJid }, 'setTyping(true) called');
   let hadError = false;
   let outputSentToUser = false;
 
+  // Check if channel supports streaming and create reply dispatcher
+  const feishuChannel = channel as any;
+  const supportsStreaming = 'startStreaming' in channel;
+
+  // Create reply dispatcher for this message batch
+  // Note: streaming cards are independent messages, NOT replies, to avoid P2P chat issues
+  let replyDispatcher: ReturnType<typeof createFeishuReplyDispatcher> | null = null;
+  if (supportsStreaming && missedMessages.length > 0) {
+    const chatId = chatJid.replace(/^fs:/, '');
+    replyDispatcher = createFeishuReplyDispatcher({
+      client: feishuChannel.client,
+      appId: feishuChannel.appId,
+      appSecret: feishuChannel.appSecret,
+      chatId,
+      chatJid,
+    });
+    logger.info({ chatJid, missedMessagesCount: missedMessages.length }, 'Created reply dispatcher');
+  }
+
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
+    logger.info({ group: group.name, resultResult: result.result, resultStatus: result.status }, 'runAgent callback invoked');
     if (result.result) {
       const raw =
         typeof result.result === 'string'
           ? result.result
           : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+      // Keep <internal>...</internal> blocks for development/debugging
+      const text = raw.trim();
+      logger.info({ group: group.name, text, hasReplyDispatcher: !!replyDispatcher }, `Agent output: ${raw.length} chars`);
       if (text) {
-        await channel.sendMessage(chatJid, text);
-        outputSentToUser = true;
+        if (replyDispatcher) {
+          // Use reply dispatcher for streaming
+          logger.info({ chatJid }, 'Calling sendPartialReply');
+          await replyDispatcher.sendPartialReply(text);
+          outputSentToUser = true;
+        } else {
+          // Fallback to regular send
+          logger.info({ chatJid }, 'Fallback to channel.sendMessage - no replyDispatcher');
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
+        }
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
       resetIdleTimer();
+    }
+    // Only close streaming when result.result is null (streaming complete marker)
+    // AND result.status === 'success' in the same callback
+    if (result.result === null && result.status === 'success' && replyDispatcher) {
+      // Agent finished - close the streaming card with the accumulated content
+      logger.info({ chatJid }, 'Agent completed, closing streaming');
+      await replyDispatcher.sendFinalReply('');
+    } else if (result.status === 'error' && replyDispatcher) {
+      // Agent error - close streaming card (content may be partial)
+      logger.info({ chatJid }, 'Agent error, closing streaming');
+      await replyDispatcher.close();
     }
 
     if (result.status === 'success') {
@@ -310,7 +352,18 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
   });
 
+  // Close reply dispatcher
+  if (replyDispatcher) {
+    try {
+      await replyDispatcher.close();
+      logger.info({ chatJid }, 'Closed reply dispatcher');
+    } catch (err) {
+      logger.error({ err, chatJid }, 'Failed to close reply dispatcher');
+    }
+  }
+
   await channel.setTyping?.(chatJid, false);
+  logger.info({ chatJid }, 'setTyping(false) called');
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {

@@ -95,7 +95,17 @@ export interface Channel {
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
+  // Optional: streaming output. Channels that support it implement these.
+  startStreaming?(jid: string, replyToMessageId?: string): Promise<string>; // returns sessionId
+  updateStreaming?(sessionId: string, text: string): Promise<void>;
+  endStreaming?(sessionId: string, finalText?: string): Promise<void>;
 }
+
+export type StreamingSession = {
+  id: string;
+  jid: string;
+  replyToMessageId?: string;
+};
 
 // Callback type that channels use to deliver inbound messages
 export type OnInboundMessage = (chatJid: string, message: NewMessage) => void;

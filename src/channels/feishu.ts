@@ -10,6 +10,7 @@ import {
   OnInboundMessage,
   RegisteredGroup,
 } from '../types.js';
+import { FeishuStreamingSession } from './feishu-streaming.js';
 
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
@@ -35,6 +36,13 @@ export class FeishuChannel implements Channel {
 
   // Track the last message ID per chat for typing indicator
   private lastMessageId = new Map<string, string>();
+
+  // Track streaming sessions per chat
+  // Key: chatJid, Value: { session, replyToMessageId }
+  private streamingSessions = new Map<
+    string,
+    { session: FeishuStreamingSession; replyToMessageId?: string }
+  >();
 
   constructor(appId: string, appSecret: string, opts: FeishuChannelOpts) {
     this.appId = appId;
@@ -86,6 +94,7 @@ export class FeishuChannel implements Channel {
 
   private async handleMessage(data: any): Promise<void> {
     const message = data.message;
+    logger.info({ messageId: message.message_id, chatId: message.chat_id }, 'handleMessage called');
     const sender = data.sender;
 
     // Ignore bot messages
@@ -293,6 +302,106 @@ export class FeishuChannel implements Channel {
         this.typingReactions.delete(chatJid);
       }
     }
+  }
+
+  async startStreaming(jid: string, replyToMessageId?: string): Promise<string> {
+    if (!this.client) {
+      logger.warn('Feishu client not initialized');
+      throw new Error('Feishu client not initialized');
+    }
+
+    logger.info({ jid, replyToMessageId }, 'Feishu.startStreaming called');
+
+    const chatJid = jid;
+    const chatId = jid.replace(/^fs:/, '');
+
+    // Idempotent: if there's an active streaming session, return it instead of creating a new one
+    const existing = this.streamingSessions.get(chatJid);
+    if (existing?.session.isActive()) {
+      const existingMessageId = existing.session.getMessageId();
+      logger.info({ chatJid, existingMessageId }, 'Streaming already active, reusing existing session');
+      return existingMessageId ?? '';
+    }
+
+    // Close any stale session that wasn't properly cleaned up
+    if (existing) {
+      try {
+        await existing.session.close();
+      } catch (err) {
+        logger.debug({ err, chatJid }, 'Failed to close stale streaming session');
+      }
+      this.streamingSessions.delete(chatJid);
+    }
+
+    const session = new FeishuStreamingSession(this.client, {
+      appId: this.appId,
+      appSecret: this.appSecret,
+    });
+
+    try {
+      await session.start(chatId, 'chat_id', {
+        replyToMessageId,
+        header: {
+          title: '⏳ 正在思考...',
+          template: 'blue',
+        },
+      });
+
+      const messageId = session.getMessageId() ?? '';
+      this.streamingSessions.set(chatJid, { session, replyToMessageId });
+
+      logger.debug({ chatJid, messageId }, 'Started Feishu streaming');
+      return messageId;
+    } catch (err) {
+      logger.error({ err, chatJid }, 'Failed to start Feishu streaming');
+      throw err;
+    }
+  }
+
+  async updateStreaming(sessionId: string, text: string): Promise<void> {
+    // Find session by messageId (sessionId is actually the messageId)
+    for (const [chatJid, { session }] of this.streamingSessions) {
+      if (session.getMessageId() === sessionId) {
+        try {
+          await session.update(text);
+        } catch (err) {
+          logger.debug({ err, chatJid }, 'Failed to update Feishu streaming');
+        }
+        return;
+      }
+    }
+    logger.debug({ sessionId }, 'No streaming session found for update');
+  }
+
+  getActiveStreamingSession(chatJid: string): string | null {
+    const entry = this.streamingSessions.get(chatJid);
+    if (entry?.session.isActive()) {
+      return entry.session.getMessageId() ?? null;
+    }
+    return null;
+  }
+
+  hasActiveStreamingSession(chatJid: string): boolean {
+    const entry = this.streamingSessions.get(chatJid);
+    return entry?.session.isActive() ?? false;
+  }
+
+  async endStreaming(sessionId: string, finalText?: string): Promise<void> {
+    // Find session by messageId
+    for (const [chatJid, entry] of this.streamingSessions) {
+      if (entry.session.getMessageId() === sessionId) {
+        try {
+          await entry.session.close(finalText);
+          logger.debug({ chatJid }, 'Ended Feishu streaming');
+        } catch (err) {
+          logger.debug({ err, chatJid }, 'Failed to end Feishu streaming');
+        } finally {
+          this.streamingSessions.delete(chatJid);
+        }
+        return;
+      }
+    }
+    logger.debug({ sessionId }, 'No streaming session found for end');
   }
 }
 
