@@ -6,7 +6,10 @@
 import * as lark from '@larksuiteoapi/node-sdk';
 
 import { logger } from '../logger.js';
-import { FeishuStreamingSession, mergeStreamingText } from './feishu-streaming.js';
+import {
+  FeishuStreamingSession,
+  mergeStreamingText,
+} from './feishu-streaming.js';
 
 export interface FeishuReplyDispatcherOptions {
   client: lark.Client;
@@ -30,7 +33,9 @@ export interface FeishuReplyDispatcher {
  * Create a Feishu reply dispatcher for handling streaming and non-streaming replies.
  * Each message gets its own dispatcher with its own streaming session.
  */
-export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOptions): FeishuReplyDispatcher {
+export function createFeishuReplyDispatcher(
+  options: FeishuReplyDispatcherOptions,
+): FeishuReplyDispatcher {
   const { client, appId, appSecret, chatId, chatJid } = options;
 
   // State lock to serialize concurrent operations
@@ -47,7 +52,9 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
   const withLock = async <T>(fn: () => Promise<T>): Promise<T> => {
     const prevLock = stateLock;
     let unlock: () => void = () => {};
-    stateLock = new Promise<void>((resolve) => { unlock = resolve; });
+    stateLock = new Promise<void>((resolve) => {
+      unlock = resolve;
+    });
     await prevLock;
     try {
       return await fn();
@@ -57,7 +64,14 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
   };
 
   const startStreaming = () => {
-    logger.info({ chatJid, hasStreamingStartPromise: !!streamingStartPromise, hasStreaming: !!streaming }, 'startStreaming called');
+    logger.info(
+      {
+        chatJid,
+        hasStreamingStartPromise: !!streamingStartPromise,
+        hasStreaming: !!streaming,
+      },
+      'startStreaming called',
+    );
     if (streamingStartPromise || streaming) {
       logger.info({ chatJid }, 'startStreaming early return - already started');
       return;
@@ -89,7 +103,9 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
         await inflightUpdate;
       }
     })();
-    partialUpdateQueue = partialUpdateQueue.then(() => thisUpdate).catch(() => {});
+    partialUpdateQueue = partialUpdateQueue
+      .then(() => thisUpdate)
+      .catch(() => {});
     return thisUpdate;
   };
 
@@ -102,25 +118,46 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
   };
 
   const closeStreaming = async (finalText?: string) => {
-    logger.info({ chatJid, finalText, hasStreaming: !!streaming, hasStreamingStartPromise: !!streamingStartPromise }, 'closeStreaming called');
+    logger.info(
+      {
+        chatJid,
+        finalText,
+        hasStreaming: !!streaming,
+        hasStreamingStartPromise: !!streamingStartPromise,
+      },
+      'closeStreaming called',
+    );
     try {
       if (streamingStartPromise) {
         logger.info({ chatJid }, 'awaiting streamingStartPromise');
         await streamingStartPromise;
         logger.info({ chatJid }, 'streamingStartPromise resolved');
       }
-      logger.info({ chatJid }, 'after await streamingStartPromise, awaiting partialUpdateQueue');
+      logger.info(
+        { chatJid },
+        'after await streamingStartPromise, awaiting partialUpdateQueue',
+      );
       await partialUpdateQueue;
-      logger.info({ chatJid }, 'after await partialUpdateQueue, awaiting inflightUpdate');
+      logger.info(
+        { chatJid },
+        'after await partialUpdateQueue, awaiting inflightUpdate',
+      );
       await inflightUpdate;
-      logger.info({ chatJid, isActive: streaming?.isActive() }, 'after await inflightUpdate');
+      logger.info(
+        { chatJid, isActive: streaming?.isActive() },
+        'after await inflightUpdate',
+      );
       if (streaming?.isActive()) {
-        const textToClose = finalText !== undefined && finalText !== '' ? finalText : streamText;
+        const textToClose =
+          finalText !== undefined && finalText !== '' ? finalText : streamText;
         logger.info({ chatJid, textToClose }, 'calling streaming.close()');
         await streaming.close(textToClose);
         logger.info({ chatJid }, 'streaming.close() done');
       } else {
-        logger.info({ chatJid, streamingState: streaming?.isActive() }, 'streaming not active, skipping close');
+        logger.info(
+          { chatJid, streamingState: streaming?.isActive() },
+          'streaming not active, skipping close',
+        );
       }
     } catch (err) {
       logger.error({ err, chatJid }, 'Failed to close streaming');
@@ -135,10 +172,16 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
 
   const sendPartialReply = async (text: string): Promise<void> => {
     await withLock(async () => {
-      logger.info({ chatJid, closed, textLength: text.length }, 'sendPartialReply ENTRY');
+      logger.info(
+        { chatJid, closed, textLength: text.length },
+        'sendPartialReply ENTRY',
+      );
       // Always reset state for new streaming to prevent mixing with previous streams
       if (closed || streaming?.isActive()) {
-        logger.info({ chatJid, hadStreaming: !!streaming?.isActive() }, 'sendPartialReply - resetting state for new streaming');
+        logger.info(
+          { chatJid, hadStreaming: !!streaming?.isActive() },
+          'sendPartialReply - resetting state for new streaming',
+        );
         closed = false;
         if (streaming) {
           try {
@@ -156,23 +199,32 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
         logger.info({ chatJid }, 'sendPartialReply skipped - empty text');
         return;
       }
-      logger.info({ chatJid, textLength: text.length }, 'sendPartialReply starting streaming');
+      logger.info(
+        { chatJid, textLength: text.length },
+        'sendPartialReply starting streaming',
+      );
       startStreaming();
       // Wait for streaming to actually start before queueing update
       if (streamingStartPromise) {
         await streamingStartPromise;
       }
       await queueStreamingUpdate(text);
-      logger.info({ chatJid, textLength: text.length }, 'sendPartialReply done');
+      logger.info(
+        { chatJid, textLength: text.length },
+        'sendPartialReply done',
+      );
     });
   };
 
   const sendFinalReply = async (text: string): Promise<void> => {
     await withLock(async () => {
       if (closed) return;
-      logger.info({ chatJid, textLength: text.length }, 'sendFinalReply called');
+      logger.info(
+        { chatJid, textLength: text.length },
+        'sendFinalReply called',
+      );
       // Flush any pending streaming updates first, then prevent new updates
-      await closeStreaming(text);  // Pass final text to update card with complete response
+      await closeStreaming(text); // Pass final text to update card with complete response
       closed = true;
       logger.info({ chatJid }, 'sendFinalReply done');
     });
@@ -214,10 +266,12 @@ export function createFeishuReplyDispatcher(options: FeishuReplyDispatcherOption
       // Add timeout to prevent hanging if partialUpdateQueue is stuck
       await Promise.race([
         closeStreaming(),
-        new Promise<void>((resolve) => setTimeout(() => {
-          logger.warn({ chatJid }, 'closeStreaming timeout - forcing close');
-          resolve();
-        }, 3000)),
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            logger.warn({ chatJid }, 'closeStreaming timeout - forcing close');
+            resolve();
+          }, 3000),
+        ),
       ]);
       logger.info({ chatJid }, 'close() completed');
     });

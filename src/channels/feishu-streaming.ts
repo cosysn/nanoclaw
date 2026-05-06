@@ -36,12 +36,18 @@ async function getToken(creds: Credentials): Promise<string> {
     return cached.token;
   }
 
-  const response = await fetch(`${resolveApiBase(creds.domain)}/auth/v3/tenant_access_token/internal`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app_id: creds.appId, app_secret: creds.appSecret }),
-    signal: AbortSignal.timeout(10000), // 10s timeout for token
-  });
+  const response = await fetch(
+    `${resolveApiBase(creds.domain)}/auth/v3/tenant_access_token/internal`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_id: creds.appId,
+        app_secret: creds.appSecret,
+      }),
+      signal: AbortSignal.timeout(10000), // 10s timeout for token
+    },
+  );
 
   if (!response.ok) {
     throw new Error(`Token request failed with HTTP ${response.status}`);
@@ -102,7 +108,10 @@ export function mergeStreamingText(
   return `${previous}${next}`;
 }
 
-function resolveStreamingCardSendMode(options?: { replyToMessageId?: string; rootId?: string }) {
+function resolveStreamingCardSendMode(options?: {
+  replyToMessageId?: string;
+  rootId?: string;
+}) {
   // Streaming cards are always independent messages, not replies
   // This avoids issues with P2P chats where message.reply may not work correctly
   if (options?.rootId) {
@@ -143,7 +152,12 @@ export class FeishuStreamingSession {
 
   async start(
     receiveId: string,
-    receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id' = 'chat_id',
+    receiveIdType:
+      | 'open_id'
+      | 'user_id'
+      | 'union_id'
+      | 'email'
+      | 'chat_id' = 'chat_id',
     options?: StreamingStartOptions,
   ): Promise<void> {
     if (this.state) {
@@ -168,7 +182,10 @@ export class FeishuStreamingSession {
       config: {
         streaming_mode: true,
         summary: { content: '[Generating...]' },
-        streaming_config: { print_frequency_ms: { default: 50 }, print_step: { default: 1 } },
+        streaming_config: {
+          print_frequency_ms: { default: 50 },
+          print_step: { default: 1 },
+        },
       },
       body: { elements },
     };
@@ -188,12 +205,17 @@ export class FeishuStreamingSession {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ type: 'card_json', data: JSON.stringify(cardJson) }),
+      body: JSON.stringify({
+        type: 'card_json',
+        data: JSON.stringify(cardJson),
+      }),
       signal: AbortSignal.timeout(10000), // 10s timeout for card creation
     });
 
     if (!createRes.ok) {
-      throw new Error(`Create card request failed with HTTP ${createRes.status}`);
+      throw new Error(
+        `Create card request failed with HTTP ${createRes.status}`,
+      );
     }
 
     const createData = (await createRes.json()) as {
@@ -207,7 +229,10 @@ export class FeishuStreamingSession {
     }
 
     const cardId = createData.data.card_id;
-    const cardContent = JSON.stringify({ type: 'card', data: { card_id: cardId } });
+    const cardContent = JSON.stringify({
+      type: 'card',
+      data: { card_id: cardId },
+    });
 
     // Send the card as an interactive message
     const sendOptions = options ?? {};
@@ -219,7 +244,11 @@ export class FeishuStreamingSession {
       sendRes = await this.client.im.message.create({
         params: { receive_id_type: receiveIdType },
         data: Object.assign(
-          { receive_id: receiveId, msg_type: 'interactive', content: cardContent },
+          {
+            receive_id: receiveId,
+            msg_type: 'interactive',
+            content: cardContent,
+          },
           { root_id: sendOptions.rootId },
         ),
       });
@@ -247,7 +276,10 @@ export class FeishuStreamingSession {
       hasNote: !!options?.note,
     };
 
-    logger.info({ messageId: sendRes.data.message_id, cardId, chatId: receiveId }, 'Streaming card created and sent');
+    logger.info(
+      { messageId: sendRes.data.message_id, cardId, chatId: receiveId },
+      'Streaming card created and sent',
+    );
   }
 
   private async updateCardContent(text: string): Promise<void> {
@@ -281,28 +313,56 @@ export class FeishuStreamingSession {
       },
     );
     if (!updateRes.ok) {
-      logger.error({ status: updateRes.status, cardId: this.state.cardId }, 'Card content update failed - HTTP error');
+      logger.error(
+        { status: updateRes.status, cardId: this.state.cardId },
+        'Card content update failed - HTTP error',
+      );
     } else {
-      const updateData = await updateRes.json() as { code: number; msg: string };
+      const updateData = (await updateRes.json()) as {
+        code: number;
+        msg: string;
+      };
       if (updateData.code !== 0) {
-        logger.error({ code: updateData.code, msg: updateData.msg, cardId: this.state.cardId }, 'Card content update failed - API error');
+        logger.error(
+          {
+            code: updateData.code,
+            msg: updateData.msg,
+            cardId: this.state.cardId,
+          },
+          'Card content update failed - API error',
+        );
       } else {
-        logger.info({ cardId: this.state.cardId, sequence: this.state.sequence }, 'Card content updated successfully');
+        logger.info(
+          { cardId: this.state.cardId, sequence: this.state.sequence },
+          'Card content updated successfully',
+        );
       }
     }
   }
 
   async update(text: string): Promise<void> {
     if (!this.state || this.closed) {
-      logger.info({ state: this.state ? 'exists' : 'null', closed: this.closed }, 'update called but not active');
+      logger.info(
+        { state: this.state ? 'exists' : 'null', closed: this.closed },
+        'update called but not active',
+      );
       return;
     }
-    const mergedInput = mergeStreamingText(this.pendingText ?? this.state.currentText, text);
+    const mergedInput = mergeStreamingText(
+      this.pendingText ?? this.state.currentText,
+      text,
+    );
     if (!mergedInput || mergedInput === this.state.currentText) {
-      logger.info({ text, currentText: this.state.currentText }, 'update skipped - no change');
+      logger.info(
+        { text, currentText: this.state.currentText },
+        'update skipped - no change',
+      );
       return;
     }
-    logger.info({ messageId: this.state.messageId, textLength: text.length }, 'update queued');
+    logger.info(
+      { messageId: this.state.messageId, textLength: text.length },
+      'update queued',
+    );
 
     // Throttle: skip if updated recently, but remember pending text
     const now = Date.now();
@@ -317,7 +377,10 @@ export class FeishuStreamingSession {
       if (!this.state || this.closed) {
         return;
       }
-      const mergedText = mergeStreamingText(this.state.currentText, mergedInput);
+      const mergedText = mergeStreamingText(
+        this.state.currentText,
+        mergedInput,
+      );
       if (!mergedText || mergedText === this.state.currentText) {
         return;
       }
@@ -354,24 +417,45 @@ export class FeishuStreamingSession {
 
   async close(finalText?: string, options?: { note?: string }): Promise<void> {
     if (!this.state || this.closed) {
-      logger.info({ cardId: this.state?.cardId }, 'close called but already closed/inactive');
+      logger.info(
+        { cardId: this.state?.cardId },
+        'close called but already closed/inactive',
+      );
       return;
     }
     this.closed = true;
-    logger.info({ messageId: this.state.messageId, cardId: this.state.cardId, finalText }, 'Closing streaming card with final text');
+    logger.info(
+      { messageId: this.state.messageId, cardId: this.state.cardId, finalText },
+      'Closing streaming card with final text',
+    );
     await this.queue;
 
-    const pendingMerged = mergeStreamingText(this.state.currentText, this.pendingText ?? undefined);
-    const text = finalText ? mergeStreamingText(pendingMerged, finalText) : pendingMerged;
+    const pendingMerged = mergeStreamingText(
+      this.state.currentText,
+      this.pendingText ?? undefined,
+    );
+    const text = finalText
+      ? mergeStreamingText(pendingMerged, finalText)
+      : pendingMerged;
     const apiBase = resolveApiBase(this.creds.domain);
 
     // Only send final update if content differs from what's already displayed
     if (text && text !== this.state.currentText) {
-      logger.info({ messageId: this.state.messageId, textLength: text.length }, 'Updating card with final content');
+      logger.info(
+        { messageId: this.state.messageId, textLength: text.length },
+        'Updating card with final content',
+      );
       await this.updateCardContent(text);
       this.state.currentText = text;
     } else {
-      logger.info({ messageId: this.state.messageId, currentText: this.state.currentText, text }, 'Skipping update - content unchanged');
+      logger.info(
+        {
+          messageId: this.state.messageId,
+          currentText: this.state.currentText,
+          text,
+        },
+        'Skipping update - content unchanged',
+      );
     }
 
     // Update note with final info
@@ -391,7 +475,10 @@ export class FeishuStreamingSession {
         },
         body: JSON.stringify({
           settings: JSON.stringify({
-            config: { streaming_mode: false, summary: { content: text?.slice(0, 50) ?? '' } },
+            config: {
+              streaming_mode: false,
+              summary: { content: text?.slice(0, 50) ?? '' },
+            },
           }),
           sequence: this.state.sequence,
           uuid: `c_${this.state.cardId}_${this.state.sequence}`,
@@ -401,13 +488,29 @@ export class FeishuStreamingSession {
     );
 
     if (!closeRes.ok) {
-      logger.error({ status: closeRes.status, cardId: this.state.cardId }, 'Failed to close streaming card - HTTP error');
+      logger.error(
+        { status: closeRes.status, cardId: this.state.cardId },
+        'Failed to close streaming card - HTTP error',
+      );
     } else {
-      const closeData = await closeRes.json() as { code: number; msg: string };
+      const closeData = (await closeRes.json()) as {
+        code: number;
+        msg: string;
+      };
       if (closeData.code !== 0) {
-        logger.error({ code: closeData.code, msg: closeData.msg, cardId: this.state.cardId }, 'Failed to close streaming card - API error');
+        logger.error(
+          {
+            code: closeData.code,
+            msg: closeData.msg,
+            cardId: this.state.cardId,
+          },
+          'Failed to close streaming card - API error',
+        );
       } else {
-        logger.info({ cardId: this.state.cardId }, 'Streaming card closed successfully');
+        logger.info(
+          { cardId: this.state.cardId },
+          'Streaming card closed successfully',
+        );
       }
     }
 

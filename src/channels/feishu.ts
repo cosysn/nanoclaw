@@ -1,6 +1,8 @@
 import * as lark from '@larksuiteoapi/node-sdk';
+import fs from 'fs';
+import path from 'path';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, TRIGGER_PATTERN, GROUPS_DIR } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -94,7 +96,10 @@ export class FeishuChannel implements Channel {
 
   private async handleMessage(data: any): Promise<void> {
     const message = data.message;
-    logger.info({ messageId: message.message_id, chatId: message.chat_id }, 'handleMessage called');
+    logger.info(
+      { messageId: message.message_id, chatId: message.chat_id },
+      'handleMessage called',
+    );
     const sender = data.sender;
 
     // Ignore bot messages
@@ -116,7 +121,35 @@ export class FeishuChannel implements Channel {
     } else if (msgType === 'image') {
       content = '[图片]';
     } else if (msgType === 'file') {
-      content = '[文件]';
+      const fileContent = JSON.parse(message.content);
+      const { file_key, file_name } = fileContent;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (group && file_key && file_name) {
+        try {
+          const attachmentsDir = path.join(
+            GROUPS_DIR,
+            group.folder,
+            'feishu-attachments',
+          );
+          await fs.promises.mkdir(attachmentsDir, { recursive: true });
+          const ext = path.extname(file_name);
+          const safeName = `${messageId}${ext}`;
+          const filePath = path.join(attachmentsDir, safeName);
+
+          const res = await this.client!.im.v1.messageResource.get({
+            path: { message_id: messageId, file_key },
+            params: { type: 'file' },
+          });
+          await (res as any).writeFile(filePath);
+
+          content = `📎 文件: feishu-attachments/${safeName}`;
+        } catch (err) {
+          logger.error({ err, messageId }, 'Failed to download Feishu file');
+          content = '[文件下载失败]';
+        }
+      } else {
+        content = '[文件]';
+      }
     } else if (msgType === 'audio') {
       content = '[语音]';
     } else if (msgType === 'video') {
@@ -304,7 +337,10 @@ export class FeishuChannel implements Channel {
     }
   }
 
-  async startStreaming(jid: string, replyToMessageId?: string): Promise<string> {
+  async startStreaming(
+    jid: string,
+    replyToMessageId?: string,
+  ): Promise<string> {
     if (!this.client) {
       logger.warn('Feishu client not initialized');
       throw new Error('Feishu client not initialized');
@@ -319,7 +355,10 @@ export class FeishuChannel implements Channel {
     const existing = this.streamingSessions.get(chatJid);
     if (existing?.session.isActive()) {
       const existingMessageId = existing.session.getMessageId();
-      logger.info({ chatJid, existingMessageId }, 'Streaming already active, reusing existing session');
+      logger.info(
+        { chatJid, existingMessageId },
+        'Streaming already active, reusing existing session',
+      );
       return existingMessageId ?? '';
     }
 
@@ -328,7 +367,10 @@ export class FeishuChannel implements Channel {
       try {
         await existing.session.close();
       } catch (err) {
-        logger.debug({ err, chatJid }, 'Failed to close stale streaming session');
+        logger.debug(
+          { err, chatJid },
+          'Failed to close stale streaming session',
+        );
       }
       this.streamingSessions.delete(chatJid);
     }

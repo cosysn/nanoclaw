@@ -291,7 +291,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // Create reply dispatcher for this message batch
   // Note: streaming cards are independent messages, NOT replies, to avoid P2P chat issues
-  let replyDispatcher: ReturnType<typeof createFeishuReplyDispatcher> | null = null;
+  let replyDispatcher: ReturnType<typeof createFeishuReplyDispatcher> | null =
+    null;
   if (supportsStreaming && missedMessages.length > 0) {
     const chatId = chatJid.replace(/^fs:/, '');
     replyDispatcher = createFeishuReplyDispatcher({
@@ -301,12 +302,22 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       chatId,
       chatJid,
     });
-    logger.info({ chatJid, missedMessagesCount: missedMessages.length }, 'Created reply dispatcher');
+    logger.info(
+      { chatJid, missedMessagesCount: missedMessages.length },
+      'Created reply dispatcher',
+    );
   }
 
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
-    logger.info({ group: group.name, resultResult: result.result, resultStatus: result.status }, 'runAgent callback invoked');
+    logger.info(
+      {
+        group: group.name,
+        resultResult: result.result,
+        resultStatus: result.status,
+      },
+      'runAgent callback invoked',
+    );
     if (result.result) {
       const raw =
         typeof result.result === 'string'
@@ -314,7 +325,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           : JSON.stringify(result.result);
       // Keep <internal>...</internal> blocks for development/debugging
       const text = raw.trim();
-      logger.info({ group: group.name, text, hasReplyDispatcher: !!replyDispatcher }, `Agent output: ${raw.length} chars`);
+      logger.info(
+        { group: group.name, text, hasReplyDispatcher: !!replyDispatcher },
+        `Agent output: ${raw.length} chars`,
+      );
       if (text) {
         if (replyDispatcher) {
           // Use reply dispatcher for streaming
@@ -323,7 +337,10 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
           outputSentToUser = true;
         } else {
           // Fallback to regular send
-          logger.info({ chatJid }, 'Fallback to channel.sendMessage - no replyDispatcher');
+          logger.info(
+            { chatJid },
+            'Fallback to channel.sendMessage - no replyDispatcher',
+          );
           await channel.sendMessage(chatJid, text);
           outputSentToUser = true;
         }
@@ -333,7 +350,11 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
     // Only close streaming when result.result is null (streaming complete marker)
     // AND result.status === 'success' in the same callback
-    if (result.result === null && result.status === 'success' && replyDispatcher) {
+    if (
+      result.result === null &&
+      result.status === 'success' &&
+      replyDispatcher
+    ) {
       // Agent finished - close the streaming card with the accumulated content
       logger.info({ chatJid }, 'Agent completed, closing streaming');
       await replyDispatcher.sendFinalReply('');

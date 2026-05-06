@@ -26,7 +26,9 @@ const streamingInstances = vi.hoisted(() => {
   };
 });
 
-const messageCreateMock = vi.hoisted(() => vi.fn().mockResolvedValue({ code: 0 }));
+const messageCreateMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ code: 0 }),
+);
 
 vi.mock('@larksuiteoapi/node-sdk', () => ({
   Client: vi.fn().mockImplementation(() => ({
@@ -232,7 +234,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.sendFinalReply('complete answer');
 
       // The streaming card should be closed with the FINAL text (not just partial)
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('complete answer');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'complete answer',
+      );
     });
 
     /**
@@ -279,7 +283,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.sendFinalReply('the actual final answer');
 
       // close is called with the final text parameter
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('the actual final answer');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'the actual final answer',
+      );
     });
   });
 
@@ -300,7 +306,9 @@ describe('FeishuReplyDispatcher', () => {
       // close should only be called once
       expect(streamingInstances.instances[0].close).toHaveBeenCalledTimes(1);
       // First call's final text is used
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('first');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'first',
+      );
     });
 
     /**
@@ -312,7 +320,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.sendFinalReply('');
 
       // close should be called with streamText, not empty string
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('partial content accumulated');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'partial content accumulated',
+      );
     });
   });
 
@@ -345,7 +355,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.close();
 
       // close is called with streamText (no separate finalText parameter)
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('partial content');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'partial content',
+      );
     });
   });
 
@@ -388,7 +400,9 @@ describe('FeishuReplyDispatcher', () => {
       const partialPromise = dispatcher.sendPartialReply('thinking...');
       const finalPromise = dispatcher.sendFinalReply('final');
 
-      await expect(Promise.all([partialPromise, finalPromise])).resolves.toBeDefined();
+      await expect(
+        Promise.all([partialPromise, finalPromise]),
+      ).resolves.toBeDefined();
 
       expect(streamingInstances.instances[0].close).toHaveBeenCalled();
     });
@@ -438,17 +452,25 @@ describe('FeishuReplyDispatcher', () => {
   describe('error handling', () => {
     it('sendToolResult handles API errors gracefully', async () => {
       messageCreateMock.mockRejectedValueOnce(new Error('API error'));
-      await expect(dispatcher.sendToolResult('some tool result')).resolves.toBeUndefined();
+      await expect(
+        dispatcher.sendToolResult('some tool result'),
+      ).resolves.toBeUndefined();
     });
 
     it('sendFinalReply handles API errors gracefully', async () => {
       await dispatcher.sendPartialReply('thinking...');
-      streamingInstances.instances[0].close.mockRejectedValueOnce(new Error('Close failed'));
-      await expect(dispatcher.sendFinalReply('some final text')).resolves.toBeUndefined();
+      streamingInstances.instances[0].close.mockRejectedValueOnce(
+        new Error('Close failed'),
+      );
+      await expect(
+        dispatcher.sendFinalReply('some final text'),
+      ).resolves.toBeUndefined();
     });
 
     it('sendPartialReply does not throw when streaming start fails', async () => {
-      await expect(dispatcher.sendPartialReply('test')).resolves.toBeUndefined();
+      await expect(
+        dispatcher.sendPartialReply('test'),
+      ).resolves.toBeUndefined();
     });
 
     it('tool result works independently of streaming state', async () => {
@@ -476,18 +498,20 @@ describe('FeishuReplyDispatcher', () => {
      */
     it('complete flow: partial results + success signal closes card properly', async () => {
       // Simulate: runAgent callback receives result.result (streaming chunks)
-      await dispatcher.sendPartialReply('Hello ');        // Chunk 1
-      await dispatcher.sendPartialReply('world ');       // Chunk 2
-      await dispatcher.sendPartialReply('!');            // Chunk 3
+      await dispatcher.sendPartialReply('Hello '); // Chunk 1
+      await dispatcher.sendPartialReply('world '); // Chunk 2
+      await dispatcher.sendPartialReply('!'); // Chunk 3
 
       // Simulate: runAgent callback receives result.status === 'success' with null result
       // This is how runAgent signals completion
       // NOTE: In real code, sendFinalReply would be called here with accumulated content
       // or with empty string to use accumulated streamText
-      await dispatcher.sendFinalReply('');  // Empty = use accumulated streamText
+      await dispatcher.sendFinalReply(''); // Empty = use accumulated streamText
 
       // Verify: streaming card was closed with accumulated content
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('Hello world !');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'Hello world !',
+      );
 
       // Verify: streaming card was created (message.create called for card)
       // Note: In real implementation, start() calls message.create; in mock, start() is mocked
@@ -510,7 +534,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.close();
 
       // Verify: close was called with final accumulated text
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('Step 1...Step 2...Done!');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'Step 1...Step 2...Done!',
+      );
       expect(dispatcher.isActive()).toBe(false);
     });
 
@@ -526,7 +552,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.sendFinalReply('Here is the complete answer!');
 
       // Verify: close was called with explicit final text, not accumulated partials
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('Here is the complete answer!');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'Here is the complete answer!',
+      );
     });
 
     /**
@@ -539,7 +567,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.close();
 
       // Verify: close was called with accumulated text
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('partial before error...');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'partial before error...',
+      );
       expect(dispatcher.isActive()).toBe(false);
 
       // Verify: subsequent partial replies are ignored
@@ -559,7 +589,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.sendPartialReply('the results...');
 
       // Final result
-      await dispatcher.sendFinalReply('Based on the search, here is the answer.');
+      await dispatcher.sendFinalReply(
+        'Based on the search, here is the answer.',
+      );
 
       // Verify: tool result was sent immediately
       expect(messageCreateMock).toHaveBeenCalledWith(
@@ -571,7 +603,9 @@ describe('FeishuReplyDispatcher', () => {
       );
 
       // Verify: streaming was closed with final answer
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('Based on the search, here is the answer.');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'Based on the search, here is the answer.',
+      );
     });
 
     /**
@@ -604,7 +638,9 @@ describe('FeishuReplyDispatcher', () => {
       await dispatcher.close();
 
       // Verify card is closed with accumulated content
-      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith('thinking...');
+      expect(streamingInstances.instances[0].close).toHaveBeenCalledWith(
+        'thinking...',
+      );
       expect(dispatcher.isActive()).toBe(false);
     });
   });
