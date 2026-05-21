@@ -529,6 +529,17 @@ registerChannelAdapter('whatsapp', {
             });
           } else {
             log.info('WhatsApp logged out');
+            // Delete auth credentials immediately. Keeping stale credentials
+            // causes the next service restart to attempt authentication with an
+            // invalidated session, producing a second 401 that can trigger
+            // WhatsApp's re-link cooldown ("can't link new devices now").
+            try {
+              fs.rmSync(authDir, { recursive: true, force: true });
+              fs.mkdirSync(authDir, { recursive: true });
+              log.info('WhatsApp auth cleared — set WHATSAPP_ENABLED=true and restart to re-link');
+            } catch (err) {
+              log.error('Failed to clear WhatsApp auth after logout', { err });
+            }
             if (rejectFirstOpen) {
               rejectFirstOpen(new Error('WhatsApp logged out'));
               rejectFirstOpen = undefined;
