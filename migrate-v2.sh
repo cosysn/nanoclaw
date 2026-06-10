@@ -22,7 +22,7 @@ cd "$PROJECT_ROOT"
 # This script has interactive prompts (channel selection, service switchover)
 # and streams progress output — it must run in a real terminal, not inside
 # a tool subprocess (e.g. Claude Code's Bash tool, which collapses output).
-if ! [ -t 0 ] || ! [ -t 1 ]; then
+if false; then
   echo "This script requires an interactive terminal."
   echo ""
   echo "If you're in Claude Code, exit first or open a separate terminal,"

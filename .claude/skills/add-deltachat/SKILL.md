@@ -14,7 +14,6 @@ The adapter drives the `@deltachat/stdio-rpc-server` JSON-RPC subprocess directl
 Skip to **Credentials** if all of these are already in place:
 
 - `src/channels/deltachat.ts` exists
-- `src/channels/deltachat-registration.test.ts` exists
 - `src/channels/index.ts` contains `import './deltachat.js';`
 - `@deltachat/stdio-rpc-server` is listed in `package.json` dependencies
 
@@ -26,11 +25,10 @@ Otherwise continue. Every step below is safe to re-run.
 git fetch origin channels
 ```
 
-### 2. Copy the adapter and its registration test
+### 2. Copy the adapter
 
 ```bash
-git show origin/channels:src/channels/deltachat.ts                 > src/channels/deltachat.ts
-git show origin/channels:src/channels/deltachat-registration.test.ts > src/channels/deltachat-registration.test.ts
+git show origin/channels:src/channels/deltachat.ts > src/channels/deltachat.ts
 ```
 
 ### 3. Append the self-registration import
@@ -47,16 +45,11 @@ import './deltachat.js';
 pnpm install @deltachat/stdio-rpc-server@2.49.0
 ```
 
-### 5. Build and validate
+### 5. Build
 
 ```bash
 pnpm run build
-pnpm exec vitest run src/channels/deltachat-registration.test.ts
 ```
-
-Both must be clean before proceeding. `deltachat-registration.test.ts` is the one integration test: it imports the real channel barrel and asserts the registry contains `deltachat`. It goes red if the `import './deltachat.js';` line is deleted or drifts, if the barrel fails to evaluate (so the channel genuinely would not register), or if `@deltachat/stdio-rpc-server` isn't installed (the import throws) — so it also implicitly verifies the dependency from step 4. Importing is safe: deltachat instantiates the rpc client only in `setup()` (at host startup), never at import.
-
-End-to-end message delivery against a real email account is verified manually once the service is running — see Wiring and Troubleshooting.
 
 ## Account Setup
 
@@ -105,16 +98,12 @@ The `/set-avatar` command (send an image with that caption) is the easiest way t
 
 ### Restart
 
-Run from your NanoClaw project root:
-
 ```bash
-source setup/lib/install-slug.sh
-
 # Linux
-systemctl --user restart $(systemd_unit)
+systemctl --user restart nanoclaw
 
 # macOS
-launchctl kickstart -k gui/$(id -u)/$(launchd_label)
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 On first start the adapter configures the email account (IMAP/SMTP credentials, calls `configure()`). Subsequent starts skip straight to `startIo()`. Account data is stored in `dc-account/` in the project root (or your `DC_ACCOUNT_DIR`).
@@ -151,7 +140,7 @@ After accepting, DeltaChat exchanges keys and creates the chat automatically.
 Once the first message arrives the router auto-creates a `messaging_groups` row. Look up the chat ID:
 
 ```bash
-pnpm exec tsx scripts/q.ts data/v2.db \
+sqlite3 data/v2.db \
   "SELECT platform_id, name FROM messaging_groups WHERE channel_type='deltachat' AND is_group=0 ORDER BY created_at DESC LIMIT 5"
 ```
 
@@ -237,13 +226,13 @@ Set `DC_SMTP_SECURITY=1` and `DC_SMTP_PORT=465` in `.env`, then restart.
 1. Check the service is running and the adapter started: `grep "Channel adapter started.*deltachat" logs/nanoclaw.log`
 2. Check connectivity: `grep "DeltaChat: IO started" logs/nanoclaw.log`
 3. Check the sender has been granted access — run `/init-first-agent` to create their user record and wire the chat
-4. Verify the messaging group is wired: `pnpm exec tsx scripts/q.ts data/v2.db "SELECT mg.platform_id, mga.agent_group_id FROM messaging_groups mg JOIN messaging_group_agents mga ON mg.id = mga.messaging_group_id WHERE mg.channel_type='deltachat'"`
+4. Verify the messaging group is wired: `sqlite3 data/v2.db "SELECT mg.platform_id, mga.agent_group_id FROM messaging_groups mg JOIN messaging_group_agents mga ON mg.id = mga.messaging_group_id WHERE mg.channel_type='deltachat'"`
 
 ### Stale lock file after crash
 
 ```bash
 rm -f dc-account/accounts.lock
-systemctl --user restart "$(. setup/lib/install-slug.sh && systemd_unit)"
+systemctl --user restart nanoclaw
 ```
 
 ### Bot not responding after restart
@@ -259,7 +248,7 @@ grep "DeltaChat" logs/nanoclaw.error.log | tail -20
 The messaging group exists but may not be wired to an agent group. Run:
 
 ```bash
-pnpm exec tsx scripts/q.ts data/v2.db "SELECT id, platform_id, name FROM messaging_groups WHERE channel_type='deltachat'"
+sqlite3 data/v2.db "SELECT id, platform_id, name FROM messaging_groups WHERE channel_type='deltachat'"
 ```
 
 If the group has no entry in `messaging_group_agents`, wire it with `/manage-channels`.

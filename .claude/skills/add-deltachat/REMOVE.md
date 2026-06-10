@@ -1,17 +1,11 @@
 # Remove DeltaChat
 
-## 1. Remove the adapter
+## 1. Disable the adapter
 
-Delete the self-registration import from `src/channels/index.ts` (skip if already gone):
+Comment out the import in `src/channels/index.ts`:
 
 ```typescript
-import './deltachat.js';
-```
-
-Then delete the copied adapter and its registration test:
-
-```bash
-rm -f src/channels/deltachat.ts src/channels/deltachat-registration.test.ts
+// import './deltachat.js';
 ```
 
 ## 2. Remove credentials
@@ -29,17 +23,14 @@ DC_SMTP_PORT
 
 ## 3. Rebuild and restart
 
-Run from your NanoClaw project root:
-
 ```bash
 pnpm run build
-source setup/lib/install-slug.sh
 
 # Linux
-systemctl --user restart $(systemd_unit)
+systemctl --user restart nanoclaw
 
 # macOS
-launchctl kickstart -k gui/$(id -u)/$(launchd_label)
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 ```
 
 ## 4. Remove account data (optional)
